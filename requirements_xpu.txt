@@ -1,0 +1,22 @@
+# Core project dependencies
+python-telegram-bot==20.8
+flask==2.3.3
+flask-sqlalchemy==3.1.1
+langchain==0.2.0
+chromadb==0.5.0
+sentence-transformers==2.7.0
+python-dotenv==1.0.1
+
+# Intel Arc / XPU software stack
+# NOTE: torch +xpu wheels are hosted on a dedicated index; keep the --index-url line intact
+torch==2.7.1+xpu --index-url https://download.pytorch.org/whl/xpu
+intel-extension-for-pytorch==2.2.0
+ipex-llm[xpu]==0.2.1
+optimum-intel==1.16.1
+transformers==4.52.0
+accelerate==0.29.3
+huggingface-hub==0.33.5
+
+# Utilities
+rich==13.7.1
+tqdm==4.68.0
