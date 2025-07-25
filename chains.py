@@ -2,13 +2,16 @@ import torch
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    BitsAndBytesConfig,
     pipeline
 )
 from langchain.llms import HuggingFacePipeline
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import logging
+
+# Intel XPU optimisation
+from ipex_llm import optimize as ipex_opt
+import intel_extension_for_pytorch as ipex
 
 # Глобальные переменные для кэширования
 _llm_pipe = None
@@ -32,23 +35,31 @@ def init_llm_pipeline():
     if _llm_pipe is not None:
         return _llm_pipe
 
-    # Конфиг для 4-bit квантования
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True
-    )
+    # Читаем идентификатор модели из переменной окружения, по умолчанию берём компактную 1.5-2B-модель
+    model_id = os.getenv("LLM_ID", "Qwen/Qwen2-1.5B-Instruct")
 
-    model_id = "mistralai/Mistral-7B-v0.1"
+    cache_dir = os.getenv("HF_HOME")  # путь к офлайн-кэшу HuggingFace, если задан
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_dir)
+
+        # Загружаем модель на XPU и отдаём под оптимизацию IPEX-LLM
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            quantization_config=bnb_config,
-            device_map="auto",
+            device_map="xpu",
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            cache_dir=cache_dir,
             trust_remote_code=True
+        )
+
+        # int4 / bf16 оптимизация под Intel Arc
+        model = ipex_opt(
+            model,
+            dtype=torch.bfloat16,
+            quantize="int4",
+            inplace=True,
+            level="O1",
         )
 
         # Создаем пайплайн с настройками генерации
