@@ -2,7 +2,7 @@
 python-telegram-bot==20.3
 flask==2.2.5
 flask-sqlalchemy==2.5.1
-langchain==0.0.365
+langchain==0.0.354
 chromadb==0.3.23
 transformers==4.34.0
 bitsandbytes==0.40.0
@@ -23,3 +23,7 @@ asyncio==3.4.3
 # Утилиты
 python-dateutil==2.8.2
 tqdm==4.65.0  # Прогресс-бары
+
+SQLAlchemy==1.4.50
+flask-sqlalchemy==2.5.1
+
