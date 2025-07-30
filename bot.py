@@ -211,12 +211,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Асинхронное выполнение запроса к LLM
         logger.info(f"Processing query from user {user_id}")
         try:
-            result = await asyncio.to_thread(qa_chain, {"query": query})
+            # Call the QA chain with proper input format
+            result = await asyncio.to_thread(lambda: qa_chain({"query": query}))
             
-            if not result or "result" not in result:
-                raise ValueError("Неверный формат ответа от QA цепи")
+            if not result:
+                raise ValueError("QA chain returned no result")
                 
-            answer = result["result"]
+            # Get the result using the output key we defined in init_qa_chain
+            answer = result.get("result", "")
+            
+            if not answer:
+                # If result is empty, try to get any available output
+                answer = str(result) if result else "Не удалось получить ответ от модели"
             
             if not answer or not answer.strip():
                 raise ValueError("Получен пустой ответ от модели")
