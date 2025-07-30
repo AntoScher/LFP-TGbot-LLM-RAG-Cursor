@@ -1,3 +1,4 @@
+import os
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -9,9 +10,14 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import logging
 
-# Intel XPU optimisation
-from ipex_llm import optimize as ipex_opt
-import intel_extension_for_pytorch as ipex
+# Intel XPU optimisation (optional)
+try:
+    from ipex_llm import optimize as ipex_opt
+    import intel_extension_for_pytorch as ipex
+    IPEX_AVAILABLE = True
+except ImportError:
+    print("Warning: ipex_llm not available, running without Intel optimizations")
+    IPEX_AVAILABLE = False
 
 # Глобальные переменные для кэширования
 _llm_pipe = None

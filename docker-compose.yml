@@ -2,9 +2,29 @@ version: '3.8'
 
 services:
   bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - .:/app
+      - ./cache:/tmp/huggingface
+      - ./logs:/app/logs
+    environment:
+      - DEVICE=cpu
+      - CACHE_DIR=/tmp/huggingface
+      - PYTHONUNBUFFERED=1
+      - FLASK_APP=flask_app/__init__.py
+      - FLASK_ENV=production
     env_file:
       - .env
     restart: unless-stopped
+    ports:
+      - "5000:5000"
+    # Увеличиваем таймауты для загрузки моделей
+    stop_grace_period: 120s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

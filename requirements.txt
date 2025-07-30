@@ -1,14 +1,15 @@
-# Основные зависимости
+# Основные зависимости с указанием wheel-версий для Windows
+numpy>=1.26.0; python_version >= '3.9' and sys_platform == 'win32' and platform_machine == 'AMD64'
 python-telegram-bot==20.3
-flask==2.2.5
-flask-sqlalchemy==2.5.1
+flask==2.3.3
+flask-sqlalchemy==3.0.3
 langchain==0.0.354
-chromadb==0.3.23
+chromadb==0.4.15
 transformers==4.34.0
-bitsandbytes==0.40.0
-torch==2.0.1
+torch>=2.1.0 --index-url https://download.pytorch.org/whl/cpu
 sentence-transformers==2.2.2
 python-dotenv==1.0.0
+SQLAlchemy==2.0.20
 
 # Дополнительные зависимости для обработки документов
 unstructured==0.10.30  # Для загрузки PDF/DOCX
@@ -16,14 +17,10 @@ pypdf==3.17.0  # Обработка PDF
 python-docx==1.1.0  # Обработка DOCX
 
 # Для асинхронной работы и PostgreSQL
-psycopg2-binary==2.9.6
+psycopg2-binary>=2.9.6  # Using binary version to avoid build issues
 asyncpg==0.28.0
 asyncio==3.4.3
 
 # Утилиты
 python-dateutil==2.8.2
 tqdm==4.65.0  # Прогресс-бары
-
-SQLAlchemy==1.4.50
-flask-sqlalchemy==2.5.1
-
