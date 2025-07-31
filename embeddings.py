@@ -2,8 +2,8 @@ import os
 import logging
 from functools import lru_cache
 from typing import Optional, Any
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 from langchain.schema.vectorstore import VectorStoreRetriever
 
 logger = logging.getLogger(__name__)

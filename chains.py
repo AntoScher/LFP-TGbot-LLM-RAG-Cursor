@@ -160,14 +160,22 @@ def init_qa_chain(retriever):
     llm_pipe = init_llm_pipeline()
     system_prompt = load_system_prompt()
 
-    # Define the prompt template with proper input variables
-    prompt_template = (
-        system_prompt + "\n\nContext:\n{context}\n\nUser Query:\n{question}"
-    )
+    # Define the prompt template with proper formatting for the model
+    prompt_template = """<|im_start|>system
+{system_prompt}
+<|im_end|>
+<|im_start|>user
+Context:
+{context}
+
+Question: {question}
+<|im_end|>
+<|im_start|>assistant
+"""
 
     prompt = PromptTemplate(
         template=prompt_template,
-        input_variables=["context", "question"]
+        input_variables=["system_prompt", "context", "question"]
     )
 
     # Create the QA chain with proper configuration
@@ -175,9 +183,17 @@ def init_qa_chain(retriever):
         llm=llm_pipe,
         chain_type="stuff",
         retriever=retriever,
-        chain_type_kwargs={"prompt": prompt},
+        chain_type_kwargs={
+            "prompt": prompt,
+            "document_prompt": PromptTemplate(
+                input_variables=["page_content"],
+                template="{page_content}"
+            ),
+            "document_variable_name": "context",
+            "verbose": True
+        },
         return_source_documents=True,
-        input_key="query",
+        input_key="question",  # Changed from "query" to match the input in handle_message
         output_key="result",
         verbose=True  # Enable verbose for debugging
     )
@@ -187,4 +203,6 @@ def init_qa_chain(retriever):
     logging.info(f"Input key: {qa_chain.input_key}")
     logging.info(f"Output key: {qa_chain.output_key}")
     
+    # Return both the chain and the system prompt
+    return qa_chain, system_prompt
     return qa_chain

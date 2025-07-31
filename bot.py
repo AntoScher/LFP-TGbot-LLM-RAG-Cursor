@@ -124,10 +124,14 @@ async def initialize_resources():
         # Инициализация QA цепи
         try:
             logger.info("Initializing QA chain...")
-            qa_chain = await asyncio.to_thread(init_qa_chain, retriever)
+            qa_chain, system_prompt = await asyncio.to_thread(init_qa_chain, retriever)
             if not qa_chain:
                 raise ValueError("QA chain initialization returned None")
-            logger.info("QA chain initialized successfully")
+            logger.info(f"QA chain initialized successfully with system prompt: {system_prompt[:100]}...")
+            
+            # Сохраняем system_prompt в глобальной области видимости
+            global _system_prompt
+            _system_prompt = system_prompt
             
         except Exception as e:
             error_msg = f"Failed to initialize QA chain: {str(e)}"
@@ -211,25 +215,61 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Асинхронное выполнение запроса к LLM
         logger.info(f"Processing query from user {user_id}")
         try:
-            # Call the QA chain with proper input format
-            result = await asyncio.to_thread(lambda: qa_chain({"query": query}))
+            # Get relevant context from the retriever
+            try:
+                logger.info(f"Retrieving context for query: {query[:100]}...")
+                docs = await asyncio.to_thread(lambda: retriever.get_relevant_documents(query))
+                context = "\n\n".join([doc.page_content for doc in docs])
+                logger.info(f"Retrieved context length: {len(context)} characters")
+                
+                # Prepare the input for the QA chain
+                global _system_prompt
+                system_prompt = _system_prompt if '_system_prompt' in globals() else ""
+                
+                # Create the input dictionary with the expected format
+                chain_input = {
+                    "question": query,  # The question to answer
+                    "context": context,  # The retrieved context
+                    "system_prompt": system_prompt  # The system prompt
+                }
+                
+                # Log the input for debugging
+                logger.info(f"QA chain input keys: {chain_input.keys()}")
+                logger.info(f"System prompt length: {len(system_prompt)} characters")
+                
+                # Call the QA chain with proper input format
+                logger.info("Calling QA chain...")
+                result = await asyncio.to_thread(lambda: qa_chain(chain_input))
+                logger.info("QA chain call completed")
+                
+            except Exception as e:
+                logger.error(f"Error in QA chain processing: {str(e)}")
+                logger.error(traceback.format_exc())
+                raise RuntimeError(f"Ошибка при обработке запроса: {str(e)}")
             
             if not result:
                 raise ValueError("QA chain returned no result")
                 
             # Get the result using the output key we defined in init_qa_chain
-            answer = result.get("result", "")
+            answer = result.get("result", "").strip()
             
             if not answer:
                 # If result is empty, try to get any available output
                 answer = str(result) if result else "Не удалось получить ответ от модели"
-            
-            if not answer or not answer.strip():
-                raise ValueError("Получен пустой ответ от модели")
                 
             # Обрезка слишком длинных ответов
             if len(answer) > 4000:
+                logger.warning("Response too long, truncating...")
                 answer = answer[:4000] + "\n\n[Ответ обрезан из-за ограничений Telegram]"
+                
+            # Удаляем технические теги из ответа, если они есть
+            answer = answer.replace("<|im_start|>", "").replace("<|im_end|>", "").strip()
+            
+            # Удаляем дублирующиеся пробелы и переносы строк
+            import re
+            answer = re.sub(r'\s+', ' ', answer).strip()
+            
+            logger.info(f"Generated answer length: {len(answer)} characters")
                 
         except Exception as e:
             error_msg = f"Ошибка при обработке запроса: {str(e)}"
