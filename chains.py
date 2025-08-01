@@ -23,7 +23,7 @@ try:
 except ImportError as e:
     print(f"Warning: Intel Extension for Transformers not available: {e}")
     ITREX_AVAILABLE = False
-from langchain.llms import HuggingFacePipeline
+from langchain_community.llms import HuggingFacePipeline
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import logging
@@ -62,8 +62,33 @@ def init_llm_pipeline():
     if _llm_pipe is not None:
         return _llm_pipe
 
+    # Check if we should use CPU mode
+    use_cpu = os.getenv("DEVICE", "").lower() == "cpu"
+    
+    if not use_cpu:
+        # Try to use Intel Arc optimizations if not in CPU mode
+        try:
+            from intel_arc_optimization import (
+                setup_intel_environment, 
+                get_optimized_device, 
+                get_model_config, 
+                optimize_model,
+                get_quantization_config
+            )
+            
+            # Настройка окружения
+            setup_intel_environment()
+            device = get_optimized_device()
+            
+        except ImportError:
+            # Fallback к старой логике
+            device = os.getenv("DEVICE", "xpu" if XPU_AVAILABLE and ITREX_AVAILABLE else "cpu")
+    else:
+        # Force CPU mode
+        device = "cpu"
+        print("Running in CPU mode as requested by DEVICE=cpu")
+
     model_id = os.getenv("MODEL_NAME", "Qwen/Qwen2-1.5B-Instruct")
-    device = os.getenv("DEVICE", "xpu" if XPU_AVAILABLE and ITREX_AVAILABLE else "cpu")
     cache_dir = os.getenv("HF_HOME")  # путь к офлайн-кэшу HuggingFace, если задан
 
     try:
@@ -74,65 +99,119 @@ def init_llm_pipeline():
             trust_remote_code=True
         )
 
-        if ITREX_AVAILABLE and device == "xpu":
-            # Настройки квантования для Intel Arc
-            quant_config = QuantizationConfig(
-                approach="weight_only",
-                op_type_dict={
-                    ".*": {
-                        "weight": {
-                            "dtype": "int4_fullrange",
-                            "bits": 4,
-                            "group_size": 128,
-                            "scheme": "sym",
-                            "algorithm": "RTN"
+        # Используем Intel Arc оптимизации если доступны
+        try:
+            from intel_arc_optimization import get_model_config, optimize_model, get_quantization_config
+            
+            # Получаем оптимизированную конфигурацию
+            model_config = get_model_config(model_id)
+            quant_config = get_quantization_config()
+            
+            print(f"Loading model {model_id} with Intel Arc optimizations...")
+            
+            # Загружаем модель с оптимизированной конфигурацией
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    cache_dir=cache_dir,
+                    **model_config
+                )
+                
+                # Применяем Intel Arc оптимизации
+                if quant_config and ITREX_AVAILABLE:
+                    model = AutoModelForCausalLM_ITREX.from_pretrained(
+                        model_id,
+                        quantization_config=quant_config,
+                        cache_dir=cache_dir,
+                        **model_config
+                    )
+                else:
+                    model = optimize_model(model)
+                    
+                # Move model to the correct device
+                if device == "xpu" and hasattr(torch, 'xpu') and torch.xpu.is_available():
+                    model = model.to('xpu')
+                elif device == "cuda" and torch.cuda.is_available():
+                    model = model.to('cuda')
+                else:
+                    model = model.to('cpu')
+                    
+            except Exception as e:
+                print(f"Error loading model with optimized config: {e}")
+                print("Falling back to standard model loading...")
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    cache_dir=cache_dir,
+                    trust_remote_code=True,
+                    torch_dtype=torch.float32,
+                    device_map="auto" if device != "cpu" else None
+                )
+                if device == "cpu":
+                    model = model.to('cpu')
+            
+            print(f"Model loaded with Intel Arc optimizations on {device.upper()}")
+            
+        except ImportError:
+            # Fallback к стандартной загрузке
+            if device == "xpu" and ITREX_AVAILABLE:
+                # Настройки квантования для Intel Arc
+                quant_config = QuantizationConfig(
+                    approach="weight_only",
+                    op_type_dict={
+                        ".*": {
+                            "weight": {
+                                "dtype": "int4_fullrange",
+                                "bits": 4,
+                                "group_size": 128,
+                                "scheme": "sym",
+                                "algorithm": "RTN"
+                            }
                         }
+                    },
+                    recipes={
+                        "rtn_args": {"enable_full_range": True, "enable_mse_search": True}
                     }
-                },
-                recipes={
-                    "rtn_args": {"enable_full_range": True, "enable_mse_search": True}
-                }
-            )
-            
-            print(f"Loading model {model_id} on XPU with ITREX optimizations...")
-            
-            # Загружаем модель с квантованием через ITREX
-            model = AutoModelForCausalLM_ITREX.from_pretrained(
-                model_id,
-                quantization_config=quant_config,
-                device_map="auto",
-                torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
-                cache_dir=cache_dir,
-                trust_remote_code=True
-            )
-            print("Model loaded on XPU with ITREX optimizations")
-            
-        else:
-            # Обычная загрузка модели без ITREX
-            if device == "xpu":
-                print("ITREX not available, falling back to standard XPU loading")
-                device_map = "auto"
-                torch_dtype = torch.bfloat16
+                )
+                
+                print(f"Loading model {model_id} on XPU with ITREX optimizations...")
+                
+                # Загружаем модель с квантованием через ITREX
+                model = AutoModelForCausalLM_ITREX.from_pretrained(
+                    model_id,
+                    quantization_config=quant_config,
+                    device_map="auto",
+                    torch_dtype=torch.bfloat16,
+                    low_cpu_mem_usage=True,
+                    cache_dir=cache_dir,
+                    trust_remote_code=True
+                )
+                print("Model loaded on XPU with ITREX optimizations")
+                
             else:
-                device_map = None
-                torch_dtype = torch.float32
-            
-            print(f"Loading model {model_id} on {device.upper()}...")
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                device_map=device_map,
-                torch_dtype=torch_dtype,
-                low_cpu_mem_usage=True,
-                cache_dir=cache_dir,
-                trust_remote_code=True
-            )
-            
-            if device == "cpu":
-                model = model.to('cpu')
-                print("Model loaded on CPU")
-            else:
-                print("Model loaded with standard device mapping")
+                # Обычная загрузка модели без ITREX
+                if device == "xpu":
+                    print("ITREX not available, falling back to standard XPU loading")
+                    device_map = "auto"
+                    torch_dtype = torch.bfloat16
+                else:
+                    device_map = None
+                    torch_dtype = torch.float32
+                
+                print(f"Loading model {model_id} on {device.upper()}...")
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    device_map=device_map,
+                    torch_dtype=torch_dtype,
+                    low_cpu_mem_usage=True,
+                    cache_dir=cache_dir,
+                    trust_remote_code=True
+                )
+                
+                if device == "cpu":
+                    model = model.to('cpu')
+                    print("Model loaded on CPU")
+                else:
+                    print("Model loaded with standard device mapping")
 
         # Создаем пайплайн с настройками генерации
         text_generation_pipeline = pipeline(
@@ -173,9 +252,11 @@ Question: {question}
 <|im_start|>assistant
 """
 
+    # Create the prompt with system_prompt as a partial variable
     prompt = PromptTemplate(
         template=prompt_template,
-        input_variables=["system_prompt", "context", "question"]
+        input_variables=["context", "question"],
+        partial_variables={"system_prompt": system_prompt}
     )
 
     # Create the QA chain with proper configuration
@@ -205,4 +286,3 @@ Question: {question}
     
     # Return both the chain and the system prompt
     return qa_chain, system_prompt
-    return qa_chain

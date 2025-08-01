@@ -5,6 +5,7 @@ from typing import Optional, Any
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.schema.vectorstore import VectorStoreRetriever
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +37,26 @@ def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
         # Инициализируем модель эмбеддингов
         try:
             logger.info("Loading HuggingFace embeddings model...")
+            # Устанавливаем переменные окружения для принудительного использования CPU
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Отключаем CUDA
+            os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Отключаем параллелизм токенизатора
+            
+            # Загружаем модель с явным указанием CPU и отключенным кешем CUDA
             embedder = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={"device": "cpu"}  # Явно указываем CPU для совместимости
+                model_kwargs={
+                    "device": "cpu"
+                },
+                encode_kwargs={
+                    "normalize_embeddings": True
+                },
+                # Отключаем кеширование модели, чтобы избежать проблем с загрузкой
+                cache_folder=None
             )
-            logger.info("Embeddings model loaded successfully")
+            
+            # Принудительно перемещаем модель на CPU
+            embedder.client._modules['0'].to('cpu')
+            logger.info("Embeddings model loaded successfully in CPU mode")
         except Exception as e:
             error_msg = f"Failed to load embeddings model: {str(e)}"
             logger.error(error_msg)

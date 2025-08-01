@@ -222,20 +222,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 context = "\n\n".join([doc.page_content for doc in docs])
                 logger.info(f"Retrieved context length: {len(context)} characters")
                 
-                # Prepare the input for the QA chain
-                global _system_prompt
-                system_prompt = _system_prompt if '_system_prompt' in globals() else ""
-                
                 # Create the input dictionary with the expected format
                 chain_input = {
                     "question": query,  # The question to answer
-                    "context": context,  # The retrieved context
-                    "system_prompt": system_prompt  # The system prompt
+                    "context": context  # The retrieved context
                 }
                 
                 # Log the input for debugging
                 logger.info(f"QA chain input keys: {chain_input.keys()}")
-                logger.info(f"System prompt length: {len(system_prompt)} characters")
+                logger.info(f"Query length: {len(query)} characters, Context length: {len(context)} characters")
                 
                 # Call the QA chain with proper input format
                 logger.info("Calling QA chain...")
