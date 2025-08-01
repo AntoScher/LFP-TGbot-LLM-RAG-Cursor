@@ -251,18 +251,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if not answer:
                 # If result is empty, try to get any available output
                 answer = str(result) if result else "Не удалось получить ответ от модели"
+            
+            # Extract only the assistant's response (after the last <|im_start|>assistant tag)
+            if "<|im_start|>assistant" in answer:
+                # Split by assistant tag and take the last part (the actual response)
+                answer = answer.split("<|im_start|>assistant")[-1]
+            
+            # Remove any remaining tags
+            answer = answer.replace("<|im_start|>", "").replace("<|im_end|>", "").strip()
+            
+            # Remove any system prompt that might be in the response
+            if "# Роль и задачи ассистента" in answer:
+                answer = answer.split("# Роль и задачи ассистента")[0].strip()
                 
-            # Обрезка слишком длинных ответов
+            # Remove any leading/trailing whitespace and normalize spaces
+            import re
+            answer = re.sub(r'\s+', ' ', answer).strip()
+            
+            # If we still have a very long response, truncate it
             if len(answer) > 4000:
                 logger.warning("Response too long, truncating...")
                 answer = answer[:4000] + "\n\n[Ответ обрезан из-за ограничений Telegram]"
-                
-            # Удаляем технические теги из ответа, если они есть
-            answer = answer.replace("<|im_start|>", "").replace("<|im_end|>", "").strip()
-            
-            # Удаляем дублирующиеся пробелы и переносы строк
-            import re
-            answer = re.sub(r'\s+', ' ', answer).strip()
             
             logger.info(f"Generated answer length: {len(answer)} characters")
                 
