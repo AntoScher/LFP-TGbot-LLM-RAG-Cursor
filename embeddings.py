@@ -2,8 +2,8 @@ import os
 import logging
 from functools import lru_cache
 from typing import Optional, Any
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 from langchain.schema.vectorstore import VectorStoreRetriever
 import traceback
 
@@ -54,12 +54,13 @@ def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
                 cache_folder=None
             )
             
-            # Принудительно перемещаем модель на CPU
-            embedder.client._modules['0'].to('cpu')
+            # В новой версии HuggingFaceEmbeddings не требуется явно перемещать модель на CPU,
+            # так как это уже обрабатывается в model_kwargs
             logger.info("Embeddings model loaded successfully in CPU mode")
         except Exception as e:
             error_msg = f"Failed to load embeddings model: {str(e)}"
             logger.error(error_msg)
+            logger.error(traceback.format_exc())  # Добавляем полный стек вызовов для отладки
             raise VectorStoreInitializationError(error_msg) from e
         
         # Проверяем существование базы данных
@@ -73,8 +74,8 @@ def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
                     embedding_function=embedder
                 )
                 retriever = vectordb.as_retriever(
-                    search_type="mmr",
-                    search_kwargs={"k": 3, "fetch_k": 10}
+                    search_type="similarity",
+                    search_kwargs={"k": 5}
                 )
                 logger.info("Vector database loaded successfully")
                 return retriever
@@ -97,8 +98,8 @@ def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
             vectordb.persist()
             
             retriever = vectordb.as_retriever(
-                search_type="mmr",
-                search_kwargs={"k": 3, "fetch_k": 10}
+                search_type="similarity",
+                search_kwargs={"k": 5}
             )
             
             logger.info("New empty vector database created successfully")

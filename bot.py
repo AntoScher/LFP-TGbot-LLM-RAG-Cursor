@@ -232,10 +232,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 logger.info(f"QA chain input keys: {chain_input.keys()}")
                 logger.info(f"Query length: {len(query)} characters, Context length: {len(context)} characters")
                 
-                # Call the QA chain with proper input format
+                # Call the QA chain without timeout
                 logger.info("Calling QA chain...")
-                result = await asyncio.to_thread(lambda: qa_chain(chain_input))
-                logger.info("QA chain call completed")
+                try:
+                    # Call the QA chain directly without timeout
+                    result = await asyncio.to_thread(lambda: qa_chain(chain_input))
+                    logger.info("QA chain call completed successfully")
+                except Exception as e:
+                    logger.error(f"Error in QA chain call: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    raise RuntimeError(f"Ошибка при генерации ответа: {str(e)}")
                 
             except Exception as e:
                 logger.error(f"Error in QA chain processing: {str(e)}")
