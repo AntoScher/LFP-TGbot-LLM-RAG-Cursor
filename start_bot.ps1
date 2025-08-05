@@ -89,12 +89,16 @@ function Test-PackageInstalled {
 
 # Function to install package
 function Install-Package {
-    param($packageName)
+    param($packageName, [switch]$Force = $false)
     try {
         $basePkg = ($packageName -split '[<>=!]')[0]
+        
+        # Force reinstall if requested
+        $forceFlag = if ($Force) { "--force-reinstall" } else { "" }
+        
         Write-Log "Installing package: $packageName" -Level "INFO"
         
-        $output = conda run -n $envName pip install $packageName 2>&1
+        $output = conda run -n $envName pip install $forceFlag $packageName 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Log "Failed to install $basePkg. Error: $output" -Level "ERROR"
             return $false
@@ -166,25 +170,49 @@ try {
         exit 1
     }
     
-    # List of required packages with versions
+    # List of required packages with specific versions for compatibility
     $requiredPackages = @(
         "python-telegram-bot>=20.0",
-        "python-dotenv>=0.19.0",
+        "python-dotenv>=1.0.0",
         "torch>=2.0.0",
-        "transformers>=4.30.0",
+        "transformers>=4.36.0",
         "sentence-transformers>=2.2.2",
-        "chromadb>=0.4.0",
-        "langchain>=0.0.200",
-        "accelerate>=0.20.0",
-        "flask>=2.0.0",
-        "flask-sqlalchemy>=3.0.0",
-        "huggingface-hub>=0.15.0",
-        "intel-extension-for-transformers"
+        "chromadb==0.4.22",
+        "langchain>=0.1.0",
+        "langchain-community>=0.0.10",
+        "langchain-core>=0.1.0",
+        "langchain-chroma==0.0.21",  # Pinned to version compatible with chromadb 0.4.22
+        "huggingface-hub>=0.16.4",
+        "flask>=2.3.3",
+        "flask-sqlalchemy>=3.0.3",
+        "intel-extension-for-transformers>=1.3.0",
+        "langchain-huggingface>=0.0.2"
     )
     
-    # Check and install missing packages
+    # First, ensure we have the correct versions of critical packages
+    $criticalPackages = @(
+        "pydantic>=1.10.0,<2.0.0",        # Lock to Pydantic v1 for compatibility
+        "pydantic-core<2.0.0",            # Ensure compatibility with Pydantic v1
+        "chromadb==0.4.22",
+        "langchain-chroma>=0.1.0,<0.2.0",  # Using the earliest available version in the 0.1.x series
+        "tokenizers>=0.21.0,<0.22.0",      # Required by transformers
+        "transformers>=4.30.0,<5.0.0",     # Version that works with the tokenizers version above
+        "langchain>=0.1.0,<0.2.0",         # Lock to langchain 0.1.x for Pydantic v1 compatibility
+        "langchain-core<0.2.0",            # Lock to langchain-core 0.1.x
+        "langchain-community<0.1.0"        # Lock to langchain-community 0.0.x
+    )
+    
+    Write-Log "Ensuring critical packages are at correct versions..." -Level "INFO"
+    foreach ($pkg in $criticalPackages) {
+        if (-not (Install-Package -packageName $pkg -Force)) {
+            Write-Log "Failed to install critical package: $pkg" -Level "ERROR"
+            exit 1
+        }
+    }
+    
+    # Check and install other missing packages
     $missingPackages = @()
-    foreach ($pkg in $requiredPackages) {
+    foreach ($pkg in $requiredPackages | Where-Object { $criticalPackages -notcontains $_ }) {
         if (-not (Test-PackageInstalled -packageName $pkg)) {
             $missingPackages += $pkg
         }
@@ -192,7 +220,7 @@ try {
     
     # Install missing packages if any
     if ($missingPackages.Count -gt 0) {
-        Write-Log "Found $($missingPackages.Count) missing package(s) to install" -Level "INFO"
+        Write-Log "Found $($missingPackages.Count) additional package(s) to install" -Level "INFO"
         foreach ($pkg in $missingPackages) {
             if (-not (Install-Package -packageName $pkg)) {
                 Write-Log "Failed to install required package: $pkg" -Level "ERROR"
