@@ -201,6 +201,14 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Игнорируем кеш и веса моделей
+cache/
+models/
+*.bin
+*.pt
+*.onnx
+*.safetensors
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
